@@ -10,20 +10,20 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.AdapterView;
 import android.widget.SearchView;
 
 import com.bitbudai.fermat_cht_android_sub_app_chat_bitdubai.adapters.ChatAdapter;
 import com.bitbudai.fermat_cht_android_sub_app_chat_bitdubai.adapters.ChatAdapterView;
-import com.bitbudai.fermat_cht_android_sub_app_chat_bitdubai.sessions.ChatSessionReferenceApp;
 import com.bitbudai.fermat_cht_android_sub_app_chat_bitdubai.util.cht_dialog_yes_no;
 import com.bitdubai.fermat_android_api.layer.definition.wallet.AbstractFermatFragment;
 import com.bitdubai.fermat_android_api.layer.definition.wallet.interfaces.ReferenceAppFermatSession;
 import com.bitdubai.fermat_api.FermatBroadcastReceiver;
 import com.bitdubai.fermat_api.FermatIntentFilter;
-import com.bitdubai.fermat_api.layer.actor_connection.common.enums.ConnectionState;
 import com.bitdubai.fermat_api.layer.all_definition.common.system.interfaces.ErrorManager;
 import com.bitdubai.fermat_api.layer.all_definition.common.system.interfaces.error_manager.enums.UnexpectedSubAppExceptionSeverity;
 import com.bitdubai.fermat_api.layer.all_definition.components.enums.PlatformComponentType;
+import com.bitdubai.fermat_api.layer.all_definition.enums.Plugins;
 import com.bitdubai.fermat_api.layer.all_definition.navigation_structure.enums.Activities;
 import com.bitdubai.fermat_api.layer.dmp_engine.sub_app_runtime.enums.SubApps;
 import com.bitdubai.fermat_api.layer.osa_android.broadcaster.Broadcaster;
@@ -32,8 +32,6 @@ import com.bitdubai.fermat_api.layer.osa_android.broadcaster.FermatBundle;
 import com.bitdubai.fermat_cht_android_sub_app_chat_bitdubai.R;
 import com.bitdubai.fermat_cht_api.all_definition.exceptions.CantGetOnlineStatus;
 import com.bitdubai.fermat_cht_api.all_definition.util.ChatBroadcasterConstants;
-import com.bitdubai.fermat_cht_api.layer.actor_connection.utils.ChatActorConnection;
-import com.bitdubai.fermat_cht_api.layer.actor_connection.utils.ChatLinkedActorIdentity;
 import com.bitdubai.fermat_cht_api.layer.identity.interfaces.ChatIdentity;
 import com.bitdubai.fermat_cht_api.layer.middleware.interfaces.Contact;
 import com.bitdubai.fermat_cht_api.layer.sup_app_module.interfaces.ChatActorCommunitySelectableIdentity;
@@ -42,6 +40,9 @@ import com.bitdubai.fermat_cht_api.layer.sup_app_module.interfaces.ChatPreferenc
 import com.bitdubai.fermat_pip_api.layer.network_service.subapp_resources.SubAppResourcesProviderManager;
 
 import java.util.List;
+
+import static com.bitdubai.fermat_api.layer.osa_android.broadcaster.NotificationBundleConstants.NOTIFICATION_ID;
+import static com.bitdubai.fermat_api.layer.osa_android.broadcaster.NotificationBundleConstants.SOURCE_PLUGIN;
 
 /**
  * Chat Fragment
@@ -123,6 +124,7 @@ public class ChatFragment
             toolbar.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
+                    adapterView.clean();
                     changeActivity(Activities.CHT_CHAT_OPEN_CONTACT_DETAIL, appSession.getAppPublicKey());
                 }
             });
@@ -131,6 +133,9 @@ public class ChatFragment
             if (errorManager != null)
                 errorManager.reportUnexpectedSubAppException(SubApps.CHT_CHAT, UnexpectedSubAppExceptionSeverity.DISABLES_SOME_FUNCTIONALITY_WITHIN_THIS_FRAGMENT, e);
         }
+
+        cancelChatMessagesNotifications();
+
         //Improve this logic to update data of contact from node, doing it like this, data will be requested every time the user opens a chat
 //        try {
 //            contactData = (Contact) appSession.getData(ChatSessionReferenceApp.CONTACT_DATA);
@@ -144,6 +149,18 @@ public class ChatFragment
 //        }
     }
 
+    public void cancelChatMessagesNotifications(){
+        //cancel notification of any message if the user is on this fragment
+        try {
+            FermatBundle fermatBundle = new FermatBundle();
+            fermatBundle.put(SOURCE_PLUGIN, Plugins.CHAT_MIDDLEWARE.getCode());
+            fermatBundle.put(NOTIFICATION_ID, ChatBroadcasterConstants.CHAT_NEW_INCOMING_MESSAGE_NOTIFICATION);
+            cancelNotification(fermatBundle);
+        } catch (Exception e) {
+            errorManager.reportUnexpectedSubAppException(SubApps.CHT_CHAT, UnexpectedSubAppExceptionSeverity.DISABLES_SOME_FUNCTIONALITY_WITHIN_THIS_FRAGMENT, e);
+        }
+    }
+
 //    @Override
 //    public void onUpdateViewOnUIThread(String code) {
 //        super.onUpdateViewOnUIThread(code);
@@ -151,13 +168,15 @@ public class ChatFragment
 //    }
 
     public void onUpdateViewUIThread() {
-        if (searchView != null) {
-            if (searchView.getQuery().toString().equals("")) {
+        if(isAttached) {
+            if (searchView != null) {
+                if (searchView.getQuery().toString().equals("")) {
+                    adapterView.refreshEvents();
+                }
+            } else {
                 adapterView.refreshEvents();
             }
-        } else {
-            adapterView.refreshEvents();
-        }
+        }else adapterView.clean();
     }
 
     @Override
@@ -225,6 +244,48 @@ public class ChatFragment
     }
 
     @Override
+    public void onPause()
+    {
+        super.onPause();
+        unbindDrawables(adapterView.getRootView().findViewById(R.id.messagesContainer));
+        unbindDrawables(adapterView.getRootView().findViewById(R.id.chatSendButton));
+        System.gc();
+    }
+
+    private void unbindDrawables(View view)
+    {
+        if (view.getBackground() != null)
+        {
+            view.getBackground().setCallback(null);
+        }
+        if (view instanceof ViewGroup && !(view instanceof AdapterView))
+        {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++)
+            {
+                unbindDrawables(((ViewGroup) view).getChildAt(i));
+            }
+            ((ViewGroup) view).removeAllViews();
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        unbindDrawables(adapterView.getRootView().findViewById(R.id.messagesContainer));
+        unbindDrawables(adapterView.getRootView().findViewById(R.id.chatSendButton));
+        adapterView.clean();
+        adapterView.destroyDrawingCache();
+        adapterView.removeView(getView());
+        adapterView.removeAllViews();
+        adapterView = null;
+        chatIdentity = null;
+        chatSettings = null;
+        chatManager = null;
+        destroy();
+
+    }
+
+    @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         try {
             int id = item.getItemId();
@@ -234,8 +295,8 @@ public class ChatFragment
                 case 2:
                     try {
                         final cht_dialog_yes_no alert = new cht_dialog_yes_no(getActivity(), appSession, null, null, null, chatManager, errorManager);
-                        alert.setTextTitle("Clean Chat");
-                        alert.setTextBody("Do you want to clean this chat? All messages in here will be erased");
+                        alert.setTextTitle("Clear Chat");
+                        alert.setTextBody("Do you want to clear this chat? All messages in here will be erased");
                         alert.setType("clean-chat");
                         alert.show();
                         alert.setOnDismissListener(new DialogInterface.OnDismissListener() {
@@ -243,6 +304,7 @@ public class ChatFragment
                             public void onDismiss(DialogInterface dialog) {
                                 try {
                                     adapterView.clean();
+                                    onUpdateViewUIThread();
                                 }catch (Exception e) {
                                     errorManager.reportUnexpectedSubAppException(SubApps.CHT_CHAT, UnexpectedSubAppExceptionSeverity.DISABLES_SOME_FUNCTIONALITY_WITHIN_THIS_FRAGMENT, e);
                                 }
@@ -272,10 +334,6 @@ public class ChatFragment
 
                     if (code.equals(ChatBroadcasterConstants.CHAT_UPDATE_VIEW)) {
                         onUpdateViewUIThread();
-                    }
-
-                    if (code.equals(ChatBroadcasterConstants.CHAT_NEW_INCOMING_MESSAGE)) {
-                        //                    fermatBundle.remove(Broadcaster.NOTIFICATION_TYPE);
                     }
                 }
             } catch (ClassCastException e) {
