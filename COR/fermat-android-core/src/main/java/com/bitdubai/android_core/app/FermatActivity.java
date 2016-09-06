@@ -15,9 +15,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -38,7 +36,6 @@ import android.support.v7.widget.Toolbar;
 import android.text.InputType;
 import android.text.Spannable;
 import android.text.SpannableString;
-import android.text.style.RelativeSizeSpan;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Menu;
@@ -66,7 +63,6 @@ import com.bitdubai.android_core.app.common.version_1.builders.FooterBuilder;
 import com.bitdubai.android_core.app.common.version_1.builders.SideMenuBuilder;
 import com.bitdubai.android_core.app.common.version_1.builders.nav_menu.NavMenuBasicAdapter;
 import com.bitdubai.android_core.app.common.version_1.builders.option_menu.OptionMenuFrameworkHelper;
-import com.bitdubai.android_core.app.common.version_1.builders.toolbar.ToolbarBuilder;
 import com.bitdubai.android_core.app.common.version_1.communication.client_system_broker.exceptions.CantCreateProxyException;
 import com.bitdubai.android_core.app.common.version_1.connection_manager.FermatAppConnectionManager;
 import com.bitdubai.android_core.app.common.version_1.navigation_view.FermatActionBarDrawerEventListener;
@@ -79,6 +75,8 @@ import com.bitdubai.android_core.app.common.version_1.util.AndroidCoreUtils;
 import com.bitdubai.android_core.app.common.version_1.util.LogReader;
 import com.bitdubai.android_core.app.common.version_1.util.MainLayoutHelper;
 import com.bitdubai.android_core.app.common.version_1.util.SharedMemory;
+import com.bitdubai.android_core.app.common.version_1.util.activity_runnables.BackgroundResIdRunnable;
+import com.bitdubai.android_core.app.common.version_1.util.activity_runnables.MenuItemIconSetterRunnable;
 import com.bitdubai.android_core.app.common.version_1.util.mail.YourOwnSender;
 import com.bitdubai.android_core.app.common.version_1.util.res_manager.ResourceLocationSearcherHelper;
 import com.bitdubai.android_core.app.common.version_1.util.system.FermatSystemUtils;
@@ -103,7 +101,6 @@ import com.bitdubai.fermat_android_api.layer.definition.wallet.interfaces.Fermat
 import com.bitdubai.fermat_android_api.layer.definition.wallet.interfaces.FermatSession;
 import com.bitdubai.fermat_android_api.layer.definition.wallet.interfaces.FrameworkHelpers;
 import com.bitdubai.fermat_android_api.layer.definition.wallet.interfaces.WizardConfiguration;
-import com.bitdubai.fermat_android_api.layer.definition.wallet.views.FermatTextView;
 import com.bitdubai.fermat_android_api.ui.adapters.FermatAdapter;
 import com.bitdubai.fermat_android_api.ui.interfaces.FermatListItemListeners;
 import com.bitdubai.fermat_api.AppsStatus;
@@ -148,7 +145,6 @@ import com.bitdubai.fermat_api.layer.pip_engine.desktop_runtime.DesktopRuntimeMa
 import com.bitdubai.sub_app.manager.fragment.DesktopSubAppFragment;
 import com.bitdubai.sub_app.wallet_manager.fragment_factory.DesktopFragmentsEnumType;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -253,6 +249,11 @@ public abstract class FermatActivity extends AppCompatActivity implements
     private NavigationViewPainter navigationViewPainter;
 
     /**
+     * Runnables
+     */
+    private BackgroundResIdRunnable navigationViewBackgroundRunnable;
+
+    /**
      * Builders
      */
 //    private ToolbarBuilder toolbarBuilder;
@@ -339,6 +340,7 @@ public abstract class FermatActivity extends AppCompatActivity implements
         return true;
     }
 
+
     private void loadMenu(Menu menu, List<OptionMenuItem> menuItemList) {
         for (int i = 0; i < menuItemList.size(); i++) {
             OptionMenuItem menuItem = menuItemList.get(i);
@@ -346,12 +348,21 @@ public abstract class FermatActivity extends AppCompatActivity implements
             int groupId = menuItem.getGroupId();
             int order = menuItem.getOrder();
             int showAsAction = menuItem.getShowAsAction();
-            MenuItem item = menu.add(groupId, id, order, menuItem.getLabel());
-            FermatDrawable icon = menuItem.getFermatDrawable();
+            final MenuItem item = menu.add(groupId, id, order, menuItem.getLabel());
+            final FermatDrawable icon = menuItem.getFermatDrawable();
             if (icon != null) {
-                int iconRes = ResourceLocationSearcherHelper.obtainRes(ResourceSearcher.DRAWABLE_TYPE, this, icon.getId(), icon.getSourceLocation(), icon.getOwner().getOwnerAppPublicKey());
-                item.setIcon(iconRes);//.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
-
+                executor.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        final int iconRes = ResourceLocationSearcherHelper.obtainRes(ResourceSearcher.DRAWABLE_TYPE, FermatActivity.this, icon.getId(), icon.getSourceLocation(), icon.getOwner().getOwnerAppPublicKey());
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                item.setIcon(iconRes);
+                            }
+                        });
+                    }
+                });
             }
             if (showAsAction != -1) item.setShowAsAction(menuItem.getShowAsAction());
             int actionViewClass = menuItem.getActionViewClass();
@@ -391,10 +402,10 @@ public abstract class FermatActivity extends AppCompatActivity implements
     public boolean onCreateOptionsMenu(Menu menu) {
         try {
             menu.clear();
-            if (optionsMenu != null) {
-                List<OptionMenuItem> optionsMenuItems = optionsMenu.getMenuItems();
-                loadMenu(menu, optionsMenuItems);
-            }
+//            if (optionsMenu != null) {
+//                List<OptionMenuItem> optionsMenuItems = optionsMenu.getMenuItems();
+//                loadMenu(menu, optionsMenuItems);
+//            }
             return true;
         } catch (Exception e) {
             getErrorManager().reportUnexpectedUIException(UISource.ACTIVITY, UnexpectedUIExceptionSeverity.UNSTABLE, FermatException.wrapException(e));
@@ -405,6 +416,8 @@ public abstract class FermatActivity extends AppCompatActivity implements
 
         return true;
     }
+
+
 
     /**
      * Dispatch onStop() to all fragments.  Ensure all loaders are stopped.
@@ -486,7 +499,7 @@ public abstract class FermatActivity extends AppCompatActivity implements
 
             // Log.i("FERMAT ACTIVITY loadUI", " setWizards " + System.currentTimeMillis());
 
-            invalidateOptionsMenu();
+//            invalidateOptionsMenu();
 
             // Log.i("FERMAT ACTIVITY loadUI", "FIN " + System.currentTimeMillis());
         } catch (Exception e) {
@@ -679,8 +692,18 @@ public abstract class FermatActivity extends AppCompatActivity implements
                  * Background drawable
                  */
                 if (sideMenu.getBackgroundDrawable() != null) {
-                    FermatDrawable backgroundDrawableColor = sideMenu.getBackgroundDrawable();
-                    navigationView.setBackgroundResource(ResourceLocationSearcherHelper.obtainRes(ResourceSearcher.DRAWABLE_TYPE, this, backgroundDrawableColor.getId(), backgroundDrawableColor.getSourceLocation(), backgroundDrawableColor.getOwner().getOwnerAppPublicKey()));
+                    final FermatDrawable backgroundDrawableColor = sideMenu.getBackgroundDrawable();
+                    executor.submit(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (navigationViewBackgroundRunnable==null)navigationViewBackgroundRunnable = new BackgroundResIdRunnable();
+                            navigationViewBackgroundRunnable.loadBeforeRun(
+                                    ResourceLocationSearcherHelper.obtainRes(ResourceSearcher.DRAWABLE_TYPE, FermatActivity.this, backgroundDrawableColor.getId(), backgroundDrawableColor.getSourceLocation(), backgroundDrawableColor.getOwner().getOwnerAppPublicKey()),
+                                    navigationView
+                            );
+                            runOnUiThread(navigationViewBackgroundRunnable);
+                        }
+                    });
                 }
 
                 navigationView.setVisibility(View.VISIBLE);
@@ -1425,7 +1448,6 @@ public abstract class FermatActivity extends AppCompatActivity implements
                     Log.e(TAG,"Removing views");
                 }
             }
-            System.gc();
             if (tabLayout != null) {
                 tabLayout.removeAllTabs();
 //                tabLayout.removeAllViewsInLayout();
@@ -1453,8 +1475,14 @@ public abstract class FermatActivity extends AppCompatActivity implements
                 mRevealView.removeAllViews();
                 mRevealView.setVisibility(View.GONE);
             }
+
+            if (optionsMenu!=null && !optionsMenu.isEmpty()) {
+                optionsMenu.clear();
+            }
+
+
             removecallbacks();
-            onRestart();
+            System.gc();
         } catch (Exception e) {
             getErrorManager().reportUnexpectedUIException(UISource.ACTIVITY, UnexpectedUIExceptionSeverity.CRASH, FermatException.wrapException(e));
             Toast.makeText(getApplicationContext(), "Recovering from system error",
@@ -1486,14 +1514,12 @@ public abstract class FermatActivity extends AppCompatActivity implements
                 bottomNavigation = null;
             }
 
-            System.gc();
-
-            // Check if no view has focus:
-            View view = getCurrentFocus();
-            if (view != null) {
-                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
-            }
+//            // Check if no view has focus:
+//            View view = getCurrentFocus();
+//            if (view != null) {
+//                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+//                imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+//            }
 
 
         } catch (Exception e) {
@@ -1781,8 +1807,14 @@ public abstract class FermatActivity extends AppCompatActivity implements
         try {
 
             wizards = null;
-//            Intent intent = new Intent(this, NotificationService.class);
-//            stopService(intent);
+
+            /**
+             * Clear runnables
+             */
+            if (navigationViewBackgroundRunnable!=null){
+                navigationViewBackgroundRunnable.clear();
+                navigationViewBackgroundRunnable = null;
+            }
 
             if (runtimeStructureManager != null) {
                 runtimeStructureManager.clear();
@@ -1796,6 +1828,7 @@ public abstract class FermatActivity extends AppCompatActivity implements
             } catch (Exception e) {
                 //nothing
             }
+
             super.onDestroy();
         } catch (Exception e) {
             e.printStackTrace();

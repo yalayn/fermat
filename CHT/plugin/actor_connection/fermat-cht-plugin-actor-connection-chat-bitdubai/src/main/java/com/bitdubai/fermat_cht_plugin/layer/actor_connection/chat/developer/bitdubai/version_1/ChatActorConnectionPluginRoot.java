@@ -94,9 +94,7 @@ public class ChatActorConnectionPluginRoot extends AbstractPlugin implements Dat
                     chatManagerNetworkService,
                     dao,
                     this,
-                    eventManager,
-                    broadcaster,
-                    this.getPluginVersionReference()
+                    broadcaster
             );
 
             FermatEventListener newsListener = eventManager.getNewListener(EventType.CHAT_ACTOR_CONNECTION_REQUEST_NEW);
@@ -112,8 +110,7 @@ public class ChatActorConnectionPluginRoot extends AbstractPlugin implements Dat
             fermatManager = new ActorConnectionManager(
                     chatManagerNetworkService,
                     dao,
-                    this,
-                    this.getPluginVersionReference()
+                    this
             );
 
             System.out.println("******* Init Chat Actor Connection ******");
